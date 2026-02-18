@@ -17,6 +17,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        ref: main
       
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -48,9 +50,6 @@ jobs:
         
     - name: Commit Model Results to Repository
       run: |
-        # Fetch latest changes
-        git pull --rebase origin main
-        
         # Add the generated files (no -f needed as .gitignore has exceptions)
         git add optimal_team_2026.xlsx optimal_team_2026.csv all_players_analyzed.csv player_data_2026.csv supercoach_model.pkl
         
@@ -58,8 +57,8 @@ jobs:
         if git diff --staged --quiet; then
           echo "No changes to commit - model results are identical to previous run"
         else
-          git commit -m "Update model results: optimal team for PR #${{ github.event.pull_request.number }}"
-          git push
+          git commit -m "Update model results for PR #${{ github.event.pull_request.number }} (commit: ${{ github.sha }})"
+          git push origin main
           echo "Model results committed and pushed to main branch"
         fi
         
