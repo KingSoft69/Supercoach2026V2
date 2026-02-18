@@ -35,7 +35,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install flake8 pytest pytest-cov
+        pip install flake8
         
     - name: Lint with flake8
       run: |
@@ -46,11 +46,30 @@ jobs:
         
     - name: Check Python files can be imported
       run: |
-        python -c "import config; print('config.py OK')"
-        python -c "import data_collector; print('data_collector.py OK')"
-        python -c "import ml_predictor; print('ml_predictor.py OK')"
-        python -c "import team_optimizer; print('team_optimizer.py OK')"
-        python -c "import supercoach_optimizer; print('supercoach_optimizer.py OK')"
+        python -c "
+        import sys
+        import os
+        import importlib.util
+        
+        failed = []
+        modules = ['config', 'data_collector', 'ml_predictor', 'team_optimizer', 'supercoach_optimizer']
+        
+        for module in modules:
+            try:
+                spec = importlib.util.find_spec(module)
+                if spec is not None:
+                    importlib.import_module(module)
+                    print(f'✓ {module}.py OK')
+                else:
+                    failed.append(module)
+                    print(f'✗ {module}.py not found')
+            except Exception as e:
+                failed.append(module)
+                print(f'✗ {module}.py failed: {e}')
+        
+        if failed:
+            sys.exit(1)
+        "
         
     - name: Display workflow completion
       run: |
