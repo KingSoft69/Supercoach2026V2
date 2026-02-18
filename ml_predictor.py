@@ -38,7 +38,7 @@ class PlayerPerformancePredictor:
         df['years_to_peak'] = np.abs(df['age'] - 26)  # Distance from peak age
         
         # Rookie and young player identification (key for development modeling)
-        df['is_rookie'] = (df['age'] <= 20).astype(int)  # First/second year players
+        df['is_rookie'] = (df['age'] <= 20).astype(int)  # Young players in early career (typically 1st-2nd year)
         df['is_young_developing'] = ((df['age'] > 20) & (df['age'] <= 23)).astype(int)  # Development years
         df['is_prime_age'] = ((df['age'] >= 24) & (df['age'] <= 28)).astype(int)  # Peak performance
         df['is_veteran'] = (df['age'] > 28).astype(int)  # Experienced players

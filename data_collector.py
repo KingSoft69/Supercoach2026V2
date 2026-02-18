@@ -187,12 +187,12 @@ class AFLDataCollector:
                         games_text = cols[5].text.strip() if len(cols) > 5 else '0'
                         games_played = int(games_text) if games_text.isdigit() else 0
                         
-                        # Fetch detailed player info if requested
+                        # Fetch detailed player info from FootyWire links (for ALL players, no limit)
                         age = None
                         draft_pick = None
                         injured_last_year = False
                         
-                        if fetch_player_details and player_url:  # Fetch all player details
+                        if fetch_player_details and player_url:
                             print(f"  Fetching details for {name} ({idx+1}/{len(rows)})...")
                             details = self.get_player_details(player_url)
                             age = details.get('age')
