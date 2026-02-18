@@ -74,6 +74,7 @@ class TeamOptimizer:
         selected_players = []
         remaining_budget = config.SALARY_CAP
         position_counts = {pos: 0 for pos in config.POSITION_REQUIREMENTS.keys()}
+        total_players_needed = config.TEAM_SIZE
         
         # Phase 1: Fill required positions with quality players (balanced budget approach)
         for position in ['MID', 'DEF', 'FWD', 'RUC']:  # Order by importance
