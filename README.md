@@ -31,17 +31,19 @@ pip install -r requirements.txt
 
 ## Usage
 
+**Important**: This optimizer fetches real-time player data from FootyWire (https://www.footywire.com/afl/footy/supercoach_prices). You need an active internet connection to get real player data.
+
 Run the optimizer:
 ```bash
 python supercoach_optimizer.py
 ```
 
 The program will:
-1. Load/generate player data
+1. Fetch real AFL player data from FootyWire
 2. Train machine learning models on player statistics
 3. Predict player performance for 2026
-4. Optimize team selection within constraints
-5. Output the optimal team composition
+4. Optimize team selection within salary cap constraints
+5. Output the optimal team composition with real players
 
 ## Output Files
 
