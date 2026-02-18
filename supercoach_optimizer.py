@@ -23,17 +23,23 @@ def main():
     print("-" * 40)
     collector = AFLDataCollector()
     
-    # Load real data from FootyWire with detailed player information
-    print("Fetching player data from FootyWire with detailed player information...")
-    print("This may take a few minutes as we fetch details for each player...")
-    players_df = collector.load_real_data(fetch_player_details=True)
+    # Load real data from FootyWire 
+    # Note: We use fetch_player_details=False for faster execution
+    # Age and draft picks are estimated from available data (games played, performance)
+    # The data is fetched from: https://www.footywire.com/afl/footy/supercoach_prices
+    print("Fetching player data from FootyWire (https://www.footywire.com/afl/footy/supercoach_prices)...")
+    players_df = collector.load_real_data(fetch_player_details=False)
     
     if players_df is None or len(players_df) == 0:
         print("\n❌ ERROR: Could not load real data from FootyWire!")
         print("Please check your internet connection and try again.")
         sys.exit(1)
     
-    print(f"✓ Successfully loaded {len(players_df)} real players from FootyWire")
+    # Check if we got real data or sample data
+    if 'FW' in players_df['player_id'].iloc[0]:
+        print(f"✓ Successfully loaded {len(players_df)} REAL AFL players from FootyWire")
+    else:
+        print(f"⚠ Using {len(players_df)} sample players (FootyWire data unavailable)")
     print(f"Positions: {players_df['position'].value_counts().to_dict()}")
     
     # Save raw data

@@ -63,47 +63,59 @@ class TeamOptimizer:
         
         # Phase 1: Fill onfield positions prioritizing high scorers
         print("\nPhase 1: Selecting starting 22 onfield players (highest scorers)...")
-        for pos in ['DEF', 'MID', 'RUC', 'FWD']:
+        
+        # Simple greedy approach: select best players by objective while ensuring we can afford to fill all positions
+        for pos_idx, pos in enumerate(['DEF', 'MID', 'RUC', 'FWD']):
             onfield_needed = config.POSITION_REQUIREMENTS[pos]['on_field']
-            pos_players = df[df['position'] == pos].copy()
+            # Filter by position and maintain sort order by objective
+            pos_players = df[df['position'] == pos].sort_values('objective', ascending=False).copy()
             
-            # Calculate budget for this position (more flexible for max_score strategy)
-            if strategy == 'max_score':
-                # For max score, allow spending more on high performers
-                pos_budget_allocation = (onfield_needed / total_onfield) * config.SALARY_CAP * 0.85
-            else:
-                pos_budget_allocation = (onfield_needed / total_onfield) * config.SALARY_CAP * 0.7
-                
-            target_price = pos_budget_allocation / onfield_needed
+            # Calculate minimum budget needed for remaining unfilled positions
+            # Use the cheapest players available for those positions
+            remaining_positions = ['DEF', 'MID', 'RUC', 'FWD'][pos_idx + 1:]
+            min_budget_for_remaining = 0
+            for rem_pos in remaining_positions:
+                rem_needed = config.POSITION_REQUIREMENTS[rem_pos]['on_field']
+                rem_players = df[df['position'] == rem_pos].nsmallest(rem_needed, 'price')
+                min_budget_for_remaining += rem_players['price'].sum()
             
-            print(f"  Selecting {onfield_needed} {pos} (target ~${target_price:,.0f} each)...")
+            print(f"  Selecting {onfield_needed} {pos} (budget available: ${remaining_budget - min_budget_for_remaining:,.0f})...")
             
-            # Pre-calculate position score threshold for max_score strategy
-            if strategy == 'max_score':
-                pos_score_threshold = df[df['position'] == pos]['predicted_score'].quantile(0.6)
-            
-            # Select best players by objective
+            # Select players for this position
             selected_for_pos = 0
             for _, player in pos_players.iterrows():
-                if selected_for_pos < onfield_needed and player['price'] <= remaining_budget:
-                    # For max_score, be more aggressive with high scorers
-                    if strategy == 'max_score':
-                        accept = (player['predicted_score'] >= pos_score_threshold or
-                                 selected_for_pos >= onfield_needed - 2)  # Must fill last 2 slots
-                    else:
-                        accept = ((player['price'] <= target_price * 1.5) or 
-                                 (selected_for_pos >= onfield_needed - 1))
-                    
-                    if accept or selected_for_pos >= onfield_needed - 1:  # Must fill last slots
+                if selected_for_pos >= onfield_needed:
+                    break
+                
+                # Can we afford this player and still fill all remaining positions?
+                budget_after_this = remaining_budget - player['price']
+                can_afford = budget_after_this >= min_budget_for_remaining
+                
+                if can_afford:
+                    player_dict = player.to_dict()
+                    player_dict['onfield'] = True
+                    selected.append(player_dict)
+                    remaining_budget -= player['price']
+                    position_counts[pos] += 1
+                    selected_for_pos += 1
+            
+            # If we couldn't fill all slots with high scorers, fill with cheaper players
+            if selected_for_pos < onfield_needed:
+                print(f"    Warning: Only selected {selected_for_pos}/{onfield_needed}, filling remaining with budget players...")
+                # Sort by price to get cheaper players
+                budget_players = pos_players[~pos_players['player_id'].isin([s['player_id'] for s in selected])]
+                budget_players = budget_players.sort_values('price', ascending=True)
+                
+                for _, player in budget_players.iterrows():
+                    if selected_for_pos >= onfield_needed:
+                        break
+                    if player['price'] <= remaining_budget:
                         player_dict = player.to_dict()
                         player_dict['onfield'] = True
                         selected.append(player_dict)
                         remaining_budget -= player['price']
                         position_counts[pos] += 1
                         selected_for_pos += 1
-                        
-                if selected_for_pos >= onfield_needed:
-                    break
         
         # Phase 2: Fill bench (8 players) - cheaper backup options
         print(f"\nPhase 2: Selecting {config.BENCH_SIZE} bench players...")
@@ -138,43 +150,6 @@ class TeamOptimizer:
             print(f"\n⚠ WARNING: Could only select {len(selected)}/{config.TEAM_SIZE} players within budget")
             print(f"  Remaining budget: ${remaining_budget:,}")
             print(f"  Consider adjusting strategy or checking data quality")
-        
-        # Create team DataFrame
-        self.selected_team = pd.DataFrame(selected)
-        
-        # Calculate statistics
-        total_cost = self.selected_team['price'].sum()
-        onfield_players = self.selected_team[self.selected_team['onfield'] == True]
-        onfield_score = onfield_players['predicted_score'].sum() if len(onfield_players) > 0 else 0
-        avg_value = self.selected_team['adjusted_value'].mean()
-        
-        print(f"\nTeam Selection Complete!")
-        print(f"Total Players: {len(self.selected_team)}/{config.TEAM_SIZE}")
-        target_bench_price = remaining_budget / config.BENCH_SIZE if remaining_budget > 0 else 100000
-        print(f"  Target bench price: ~${target_bench_price:,.0f} each")
-        
-        bench_count = 0
-        for _, player in remaining_players.iterrows():
-            pos = player['position']
-            # Check if we can add more of this position and afford it
-            if (bench_count < config.BENCH_SIZE and 
-                player['price'] <= remaining_budget and
-                position_counts[pos] < config.POSITION_REQUIREMENTS[pos]['max']):
-                player_dict = player.to_dict()
-                player_dict['onfield'] = False
-                selected.append(player_dict)
-                remaining_budget -= player['price']
-                position_counts[pos] += 1
-                bench_count += 1
-                
-            if bench_count >= config.BENCH_SIZE:
-                break
-        
-        # If we didn't fill all positions, warn the user
-        if len(selected) < config.TEAM_SIZE:
-            print(f"\n⚠ WARNING: Could only select {len(selected)}/{config.TEAM_SIZE} players within budget")
-            print(f"  Remaining budget: ${remaining_budget:,}")
-            print(f"  Consider adjusting player valuations or increasing budget")
         
         # Create team DataFrame
         self.selected_team = pd.DataFrame(selected)
