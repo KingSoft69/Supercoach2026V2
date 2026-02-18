@@ -48,8 +48,11 @@ jobs:
         
     - name: Commit Model Results to Repository
       run: |
-        # Add the generated files
-        git add -f optimal_team_2026.xlsx optimal_team_2026.csv all_players_analyzed.csv player_data_2026.csv supercoach_model.pkl
+        # Fetch latest changes
+        git pull --rebase origin main
+        
+        # Add the generated files (no -f needed as .gitignore has exceptions)
+        git add optimal_team_2026.xlsx optimal_team_2026.csv all_players_analyzed.csv player_data_2026.csv supercoach_model.pkl
         
         # Check if there are changes to commit
         if git diff --staged --quiet; then
