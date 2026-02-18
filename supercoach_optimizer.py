@@ -18,20 +18,22 @@ def main():
     print("for the 2026 season, maximizing predicted performance within budget constraints.")
     print("\n" + "="*80 + "\n")
     
-    # Step 1: Collect player data
-    print("STEP 1: Collecting Player Data")
+    # Step 1: Collect player data from FootyWire
+    print("STEP 1: Collecting Real Player Data from FootyWire")
     print("-" * 40)
     collector = AFLDataCollector()
     
-    # Try to load real data from FootyWire first with detailed player information
-    try:
-        # Enable fetching detailed player info from FootyWire links
-        players_df = collector.load_real_data(fetch_player_details=True)
-    except:
-        print("Could not load real data, using sample data")
-        players_df = collector.load_sample_data()
+    # Load real data from FootyWire with detailed player information
+    print("Fetching player data from FootyWire with detailed player information...")
+    print("This may take a few minutes as we fetch details for each player...")
+    players_df = collector.load_real_data(fetch_player_details=True)
     
-    print(f"Loaded {len(players_df)} players")
+    if players_df is None or len(players_df) == 0:
+        print("\n❌ ERROR: Could not load real data from FootyWire!")
+        print("Please check your internet connection and try again.")
+        sys.exit(1)
+    
+    print(f"✓ Successfully loaded {len(players_df)} real players from FootyWire")
     print(f"Positions: {players_df['position'].value_counts().to_dict()}")
     
     # Save raw data
@@ -64,31 +66,15 @@ def main():
                   f"Price: ${player['price']:7,} - "
                   f"Value: {player['adjusted_value']:5.2f}")
     
-    # Step 4: Optimize team selection
+    # Step 4: Optimize team selection for maximum score (overall rank victory)
     print("\n" + "="*80)
-    print("STEP 4: Optimizing Team Selection")
+    print("STEP 4: Optimizing Team Selection for Overall Rank Victory")
     print("-" * 40)
+    print("Strategy: Maximize predicted weekly score to win overall rank")
     optimizer = TeamOptimizer()
     
-    # Try different strategies
-    strategies = ['balanced', 'value', 'high_score']
-    best_team = None
-    best_score = 0
-    
-    for strategy in strategies:
-        print(f"\nTrying strategy: {strategy}")
-        team = optimizer.optimize_team(players_df, strategy=strategy)
-        starting = optimizer.get_starting_lineup()
-        total_score = starting['predicted_score'].sum()
-        
-        if total_score > best_score:
-            best_score = total_score
-            best_team = team
-            best_strategy = strategy
-    
-    # Use best team
-    print(f"\n\nBest strategy: {best_strategy}")
-    optimizer.selected_team = best_team
+    # Use max_score strategy to win overall rank
+    team = optimizer.optimize_team(players_df, strategy='max_score')
     
     # Step 5: Display and save results
     print("\n" + "="*80)

@@ -22,7 +22,7 @@ class PlayerPerformancePredictor:
         self.is_trained = False
         
     def prepare_features(self, df):
-        """Prepare features for ML model"""
+        """Prepare features for ML model with enhanced rookie development modeling"""
         df = df.copy()
         
         # Encode categorical variables
@@ -33,32 +33,79 @@ class PlayerPerformancePredictor:
         df['price_per_point'] = df['price'] / (df['avg_score'] + 1)
         df['form_ratio'] = df['form_last_5'] / (df['avg_score'] + 1)
         
-        # Age-based features
+        # Enhanced age-based features for rookie development
         df['age_squared'] = df['age'] ** 2  # Capture non-linear age effects
         df['years_to_peak'] = np.abs(df['age'] - 26)  # Distance from peak age
         
-        # Draft pick features (lower draft pick = better)
+        # Rookie and young player identification (key for development modeling)
+        df['is_rookie'] = (df['age'] <= 20).astype(int)  # First/second year players
+        df['is_young_developing'] = ((df['age'] > 20) & (df['age'] <= 23)).astype(int)  # Development years
+        df['is_prime_age'] = ((df['age'] >= 24) & (df['age'] <= 28)).astype(int)  # Peak performance
+        df['is_veteran'] = (df['age'] > 28).astype(int)  # Experienced players
+        
+        # Games experience features (important for rookie trajectory)
+        df['experience_level'] = np.log1p(df['games_played'])  # Log transform for diminishing returns
+        df['games_per_year'] = df['games_played'] / np.maximum(df['age'] - 17, 1)  # Availability rate
+        
+        # Draft pick features (lower draft pick = better, critical for rookies)
         df['is_top_10_pick'] = (df['draft_pick'] <= 10).astype(int)
         df['is_first_round_pick'] = (df['draft_pick'] <= 20).astype(int)
+        df['elite_draft_pedigree'] = (df['draft_pick'] <= 5).astype(int)  # Top 5 picks - elite talent
         
-        # Injury impact
+        # Rookie development trajectory features
+        # High draft picks who are young have huge upside
+        df['rookie_upside'] = (
+            df['is_rookie'] * df['draft_value'] * 2 +  # Rookies with good draft position
+            df['is_young_developing'] * df['draft_value'] * 1.5  # Young players still developing
+        )
+        
+        # Potential-based projections (critical for rookies getting better)
+        df['potential_adjusted_score'] = df['avg_score'] * df['potential']
+        df['growth_potential'] = np.maximum(0, (23 - df['age']) / 5) * df['draft_value']  # Years of growth left
+        
+        # For rookies/young players with limited games, boost score by potential
+        df['projected_improvement'] = 0.0
+        # Rookies (age <= 20) with top draft picks expected to improve significantly
+        df.loc[df['is_rookie'] == 1, 'projected_improvement'] = df['draft_value'] * 15  # Up to 15 point improvement
+        # Young developing players (21-23) still improving
+        df.loc[df['is_young_developing'] == 1, 'projected_improvement'] = df['draft_value'] * 8  # Up to 8 point improvement
+        
+        # Combine current performance with projected improvement
+        df['future_score_projection'] = df['avg_score'] + df['projected_improvement']
+        
+        # Injury impact (but less penalty for young players with no history)
         df['injury_risk'] = df['injury_history'] + df['injured_last_year'] * 2
         df['availability_score'] = df['games_last_3'] / 3.0  # 0-1 scale
         
-        # Potential adjusted performance
-        df['potential_adjusted_score'] = df['avg_score'] * df['potential']
-        
-        # Select features
+        # Select features for model
         feature_cols = [
+            # Age and development features
             'age', 'age_squared', 'years_to_peak', 'potential',
-            'games_played', 'avg_disposals', 'avg_kicks', 'avg_handballs',
+            'is_rookie', 'is_young_developing', 'is_prime_age', 'is_veteran',
+            
+            # Experience features
+            'games_played', 'experience_level', 'games_per_year',
+            
+            # Draft pedigree (critical for rookie evaluation)
+            'draft_pick', 'draft_value', 'is_top_10_pick', 'is_first_round_pick', 'elite_draft_pedigree',
+            
+            # Performance features
+            'avg_disposals', 'avg_kicks', 'avg_handballs',
             'avg_marks', 'avg_tackles', 'avg_goals', 'avg_behinds', 'avg_hitouts',
-            'team_encoded', 'position_encoded', 
-            'draft_pick', 'draft_value', 'is_top_10_pick', 'is_first_round_pick',
+            
+            # Team and position
+            'team_encoded', 'position_encoded',
+            
+            # Health and availability
             'injured_last_year', 'injury_history', 'injury_risk',
             'games_last_3', 'availability_score',
+            
+            # Form and value
             'form_last_5', 'price_per_point', 'form_ratio',
-            'potential_adjusted_score'
+            
+            # Potential and development (key for rookies)
+            'potential_adjusted_score', 'rookie_upside', 'growth_potential',
+            'projected_improvement', 'future_score_projection'
         ]
         
         X = df[feature_cols]
@@ -117,29 +164,59 @@ class PlayerPerformancePredictor:
         return predictions
     
     def calculate_value_scores(self, df):
-        """Calculate value scores (predicted points per $1000 spent)"""
+        """Calculate value scores with enhanced rookie development modeling"""
         df = df.copy()
         
-        # Predict expected scores
+        # Predict expected scores (includes rookie improvement projections)
         predicted_scores = self.predict_scores(df)
         df['predicted_score'] = predicted_scores
         
-        # Calculate value (points per $100k)
+        # Calculate base value (points per $100k)
         df['value_score'] = (df['predicted_score'] / df['price']) * 100000
         
-        # Risk adjustment based on injury history and games played
+        # Risk adjustment based on injury history and availability
         df['risk_factor'] = 1 - (df['injury_history'] * 0.1)
         df['risk_factor'] = df['risk_factor'].clip(0.5, 1.0)
         
         # Additional penalty for injured last year
         df.loc[df['injured_last_year'] == 1, 'risk_factor'] *= 0.9
         
-        # Potential bonus for young players (upside)
+        # Enhanced upside factor for rookies and young players getting better
         df['upside_factor'] = 1.0
-        df.loc[df['age'] < 23, 'upside_factor'] = df['potential']
+        
+        # Rookies (age <= 20): Massive upside if high draft picks
+        rookie_mask = df['age'] <= 20
+        df.loc[rookie_mask, 'upside_factor'] = (
+            1.0 + (df.loc[rookie_mask, 'potential'] - 1.0) * 1.5 +  # Potential boost
+            df.loc[rookie_mask, 'draft_value'] * 0.3  # Draft pedigree boost
+        )
+        
+        # Young developing players (21-23): Strong upside
+        young_mask = (df['age'] > 20) & (df['age'] <= 23)
+        df.loc[young_mask, 'upside_factor'] = (
+            1.0 + (df.loc[young_mask, 'potential'] - 1.0) * 1.2 +  # Potential boost
+            df.loc[young_mask, 'draft_value'] * 0.2  # Draft pedigree boost
+        )
+        
+        # Elite draft picks (top 5) get extra boost - they're future stars
+        elite_draft_mask = df['draft_pick'] <= 5
+        df.loc[elite_draft_mask & (df['age'] <= 23), 'upside_factor'] *= 1.15
+        
+        # Breakout potential: Young players with limited games but good stats
+        breakout_potential_mask = (
+            (df['age'] <= 23) & 
+            (df['games_played'] < 44) &  # Less than 2 full seasons
+            (df['avg_score'] > 60)  # Already showing promise
+        )
+        df.loc[breakout_potential_mask, 'upside_factor'] *= 1.1
         
         # Adjusted value score with risk and upside
+        # For overall rank, we prioritize total score, so upside matters more
         df['adjusted_value'] = df['value_score'] * df['risk_factor'] * df['upside_factor']
+        
+        # For overall rank optimization: Create score-focused metric
+        # This prioritizes predicted score with rookie upside
+        df['overall_rank_score'] = df['predicted_score'] * df['upside_factor'] * df['risk_factor']
         
         return df
     
