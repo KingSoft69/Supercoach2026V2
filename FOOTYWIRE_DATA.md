@@ -56,5 +56,5 @@ If FootyWire cannot be reached:
 - Sample players have realistic stats but fictional names
 - This allows development/testing without internet access
 
-##ネット環境での実行
+## Production Usage
 This is the intended production behavior - always run with real FootyWire data when possible.

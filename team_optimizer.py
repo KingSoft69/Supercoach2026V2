@@ -154,8 +154,6 @@ class TeamOptimizer:
         # Create team DataFrame
         self.selected_team = pd.DataFrame(selected)
         
-
-        
         # Calculate statistics
         total_cost = self.selected_team['price'].sum()
         onfield_players = self.selected_team[self.selected_team['onfield'] == True]
