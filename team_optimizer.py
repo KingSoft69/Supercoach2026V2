@@ -144,6 +144,55 @@ class TeamOptimizer:
         self.selected_team.to_csv(filepath, index=False)
         print(f"\nTeam saved to {filepath}")
     
+    def save_team_excel(self, filepath='optimal_team_2026.xlsx'):
+        """Save team to Excel with formatting"""
+        if self.selected_team is None:
+            raise ValueError("No team selected.")
+        
+        # Create Excel writer
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            # Starting lineup
+            starting = self.get_starting_lineup()
+            starting_sorted = starting.sort_values(['position', 'predicted_score'], ascending=[True, False])
+            starting_sorted.to_excel(writer, sheet_name='Starting Lineup', index=False)
+            
+            # Bench
+            bench = self.get_bench_players()
+            bench_sorted = bench.sort_values('predicted_score', ascending=False)
+            bench_sorted.to_excel(writer, sheet_name='Bench', index=False)
+            
+            # Full team
+            full_team_sorted = self.selected_team.sort_values(['position', 'predicted_score'], ascending=[True, False])
+            full_team_sorted.to_excel(writer, sheet_name='Full Team', index=False)
+            
+            # Summary statistics
+            summary_data = {
+                'Metric': [
+                    'Total Players',
+                    'Total Cost',
+                    'Salary Cap',
+                    'Remaining Budget',
+                    'Starting 22 Predicted Score',
+                    'Average Player Value',
+                    'Average Age',
+                    'Average Injury History'
+                ],
+                'Value': [
+                    len(self.selected_team),
+                    f"${self.selected_team['price'].sum():,}",
+                    f"${config.SALARY_CAP:,}",
+                    f"${config.SALARY_CAP - self.selected_team['price'].sum():,}",
+                    f"{starting['predicted_score'].sum():.2f}",
+                    f"{self.selected_team['adjusted_value'].mean():.2f}",
+                    f"{self.selected_team['age'].mean():.1f}",
+                    f"{self.selected_team['injury_history'].mean():.2f}"
+                ]
+            }
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_excel(writer, sheet_name='Summary', index=False)
+        
+        print(f"\nTeam saved to Excel: {filepath}")
+    
     def analyze_team_balance(self):
         """Analyze team composition"""
         if self.selected_team is None:
