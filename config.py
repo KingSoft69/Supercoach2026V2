@@ -9,13 +9,15 @@ TEAM_SIZE = 30  # Total players in team
 # Position requirements
 # Supercoach 2026 rules: 30 players total
 # - 22 on-field players (6 DEF, 8 MID, 2 RUC, 6 FWD)
-# - 8 bench players (any position mix, typically emergency coverage)
+# - 8 bench players (any position mix, typically emergency coverage for each position)
+# Max values allow flexibility for bench composition
 POSITION_REQUIREMENTS = {
-    'DEF': {'min': 6, 'max': 8, 'on_field': 6},  # 6 onfield, can have up to 8 total (2 bench)
-    'MID': {'min': 8, 'max': 10, 'on_field': 8},  # 8 onfield, can have up to 10 total (2 bench)
-    'RUC': {'min': 2, 'max': 3, 'on_field': 2},   # 2 onfield, can have up to 3 total (1 bench)
-    'FWD': {'min': 6, 'max': 8, 'on_field': 6},   # 6 onfield, can have up to 8 total (2 bench)
+    'DEF': {'min': 6, 'max': 9, 'on_field': 6},   # 6 onfield, up to 3 bench
+    'MID': {'min': 8, 'max': 11, 'on_field': 8},  # 8 onfield, up to 3 bench
+    'RUC': {'min': 2, 'max': 4, 'on_field': 2},   # 2 onfield, up to 2 bench
+    'FWD': {'min': 6, 'max': 9, 'on_field': 6},   # 6 onfield, up to 3 bench
 }
+# Total: 22 onfield + flexible 8 bench (max total = 33 but constrained to 30 by TEAM_SIZE)
 
 # Total on-field: 22 players (6+8+2+6)
 # Total bench: 8 players (flexible positioning)
