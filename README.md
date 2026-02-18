@@ -45,10 +45,30 @@ The program will:
 
 ## Output Files
 
-- `optimal_team_2026.csv`: Your optimized 30-player team
+- `optimal_team_2026.xlsx`: Your optimized 30-player team (Excel format with multiple sheets)
+- `optimal_team_2026.csv`: Your optimized 30-player team (CSV format)
 - `all_players_analyzed.csv`: All players with ML predictions and value scores
 - `player_data_2026.csv`: Raw player statistics
 - `supercoach_model.pkl`: Trained ML model (can be reused)
+
+The Excel file contains multiple sheets:
+- **Starting Lineup**: Your best 22 players organized by position
+- **Bench**: Your 8 bench players
+- **Full Team**: All 30 players sorted by position and score
+- **Summary**: Key statistics including total cost, predicted score, and team metrics
+
+## Automated Team Generation
+
+This repository includes a GitHub Actions workflow that automatically runs the optimizer whenever a pull request is merged to the main branch. The workflow:
+1. Runs the optimizer with the latest code changes
+2. Generates the optimal team in Excel format
+3. Uploads the team file as a downloadable artifact
+4. Posts a comment on the PR with links to download the results
+
+To access the generated team after merging a PR:
+1. Go to the **Actions** tab in your repository
+2. Find the "Run Model on PR Completion" workflow run
+3. Download the artifacts containing the team files
 
 ## Configuration
 
