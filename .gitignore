@@ -12,3 +12,10 @@ venv/
 env/
 .pytest_cache/
 .ipynb_checkpoints/
+
+# Allow specific model output files to be tracked
+!optimal_team_2026.xlsx
+!optimal_team_2026.csv
+!all_players_analyzed.csv
+!player_data_2026.csv
+!supercoach_model.pkl
