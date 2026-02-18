@@ -11,7 +11,7 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     
     steps:
@@ -41,28 +41,24 @@ jobs:
         echo "Running AFL Supercoach 2026 Team Optimizer..."
         python supercoach_optimizer.py
         
-    - name: Upload Excel Team File
-      uses: actions/upload-artifact@v3
-      with:
-        name: optimal-team-${{ github.event.pull_request.number }}
-        path: optimal_team_2026.xlsx
-        retention-days: 90
+    - name: Configure Git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-    - name: Upload CSV Team File
-      uses: actions/upload-artifact@v3
-      with:
-        name: optimal-team-csv-${{ github.event.pull_request.number }}
-        path: optimal_team_2026.csv
-        retention-days: 90
+    - name: Commit Model Results to Repository
+      run: |
+        # Add the generated files
+        git add -f optimal_team_2026.xlsx optimal_team_2026.csv all_players_analyzed.csv player_data_2026.csv supercoach_model.pkl
         
-    - name: Upload Analysis Files
-      uses: actions/upload-artifact@v3
-      with:
-        name: analysis-files-${{ github.event.pull_request.number }}
-        path: |
-          all_players_analyzed.csv
-          player_data_2026.csv
-        retention-days: 90
+        # Check if there are changes to commit
+        if git diff --staged --quiet; then
+          echo "No changes to commit - model results are identical to previous run"
+        else
+          git commit -m "Update model results: optimal team for PR #${{ github.event.pull_request.number }}"
+          git push
+          echo "Model results committed and pushed to main branch"
+        fi
         
     - name: Comment on PR with Results
       uses: actions/github-script@v6
@@ -76,14 +72,19 @@ jobs:
             repo: context.repo.repo,
             body: `✅ **Supercoach 2026 Team Optimization Complete!**
             
-            The optimal team has been generated and is available as a workflow artifact.
+            The optimal team has been generated and committed to the main branch.
             
-            📊 **Download the results:**
-            - [optimal_team_2026.xlsx](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) - Excel file with your optimized team
-            - CSV and analysis files are also available in the workflow artifacts
+            📊 **View the results:**
+            - [optimal_team_2026.xlsx](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/optimal_team_2026.xlsx) - Excel file with your optimized team
+            - [optimal_team_2026.csv](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/optimal_team_2026.csv) - CSV version
+            - [all_players_analyzed.csv](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/all_players_analyzed.csv) - Complete player analysis
+            - [player_data_2026.csv](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/player_data_2026.csv) - Raw player data
+            - [supercoach_model.pkl](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/supercoach_model.pkl) - Trained ML model
             
             🏆 **Next Steps:**
-            1. Go to the [Actions tab](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
-            2. Download the "optimal-team-${context.payload.pull_request.number}" artifact
-            3. Use the team to dominate Supercoach 2026!`
+            1. The files are now available in the main branch of the repository
+            2. Download the optimal_team_2026.xlsx file directly from the repository
+            3. Use the team to dominate Supercoach 2026!
+            
+            _Note: These files are automatically overwritten each time the model runs._`
           });
