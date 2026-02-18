@@ -1,5 +1,5 @@
 """
-Team optimization module using constraint-based optimization - Fixed version
+Team optimization module using constraint-based optimization
 """
 import numpy as np
 import pandas as pd
@@ -16,7 +16,7 @@ class TeamOptimizer:
         
     def optimize_team(self, players_df, strategy='balanced'):
         """
-        Optimize team selection with guaranteed budget compliance
+        Optimize team selection using budget-constrained greedy algorithm
         
         Parameters:
         - players_df: DataFrame with player data including predicted_score and value_score
@@ -37,85 +37,153 @@ class TeamOptimizer:
         else:  # balanced
             df['objective'] = df['predicted_score'] * 0.7 + df['adjusted_value'] * 0.3
         
-        # Calculate budget allocation to ensure all positions can be filled
+        # Calculate fixed budget allocation per position to ensure all can be filled
+        # Based on minimum prices we need to reserve
         min_prices = {}
         for pos in ['DEF', 'MID', 'RUC', 'FWD']:
             required = config.POSITION_REQUIREMENTS[pos]['min']
             pos_players = df[df['position'] == pos].nsmallest(required, 'price')
             min_prices[pos] = pos_players['price'].sum()
         
-        # Reserve for bench
+        # Reserve for bench (cheapest 8 players overall)
         bench_needed = config.POSITION_REQUIREMENTS['BENCH']['min']
         min_prices['BENCH'] = df.nsmallest(bench_needed, 'price')['price'].sum()
         
         total_min = sum(min_prices.values())
-        buffer = config.SALARY_CAP - total_min
+        buffer = config.SALARY_CAP - total_min  # Extra budget we can use for better players
         
-        # Allocate budget proportionally
-        position_budgets = {
-            'MID': min_prices['MID'] + buffer * 0.35,
-            'DEF': min_prices['DEF'] + buffer * 0.25,
-            'FWD': min_prices['FWD'] + buffer * 0.20,
-            'RUC': min_prices['RUC'] + buffer * 0.15,
-            'BENCH': min_prices['BENCH'] + buffer * 0.05
-        }
+        # Allocate budget proportionally but ensure minimums
+        position_budgets = {}
+        for pos in ['DEF', 'MID', 'RUC', 'FWD', 'BENCH']:
+            # Each position gets its minimum plus a share of the buffer
+            if pos == 'MID':
+                position_budgets[pos] = min_prices[pos] + buffer * 0.35  # 35% of buffer to midfielders
+            elif pos == 'DEF':
+                position_budgets[pos] = min_prices[pos] + buffer * 0.25  # 25% to defenders
+            elif pos == 'FWD':
+                position_budgets[pos] = min_prices[pos] + buffer * 0.20  # 20% to forwards
+            elif pos == 'RUC':
+                position_budgets[pos] = min_prices[pos] + buffer * 0.15  # 15% to rucks
+            else:  # BENCH
+                position_budgets[pos] = min_prices[pos] + buffer * 0.05  # 5% to bench
+        
+        print(f"\nBudget allocation:")
+        for pos in ['MID', 'DEF', 'FWD', 'RUC', 'BENCH']:
+            print(f"  {pos}: ${position_budgets[pos]:,.0f}")
         
         selected_players = []
+        remaining_budget = config.SALARY_CAP
         position_counts = {pos: 0 for pos in config.POSITION_REQUIREMENTS.keys()}
         
-        # Phase 1: Fill each position within allocated budget
-        for position in ['MID', 'DEF', 'FWD', 'RUC']:
+        # Phase 1: Fill required positions with quality players (balanced budget approach)
+        for position in ['MID', 'DEF', 'FWD', 'RUC']:  # Order by importance
             pos_df = df[df['position'] == position].sort_values('objective', ascending=False).copy()
             required = config.POSITION_REQUIREMENTS[position]['min']
-            budget_for_position = position_budgets[position]
+            
+            # How much budget do we have left per remaining player?
+            remaining_players_needed = total_players_needed - len(selected_players)
+            budget_per_remaining_player = remaining_budget / remaining_players_needed if remaining_players_needed > 0 else 0
+            
+            # Calculate minimum price we need to reserve for future positions
+            # Estimate cheapest players for each remaining position
+            future_positions = ['MID', 'DEF', 'FWD', 'RUC'][['MID', 'DEF', 'FWD', 'RUC'].index(position)+1:]
+            min_budget_to_reserve = 0
+            for future_pos in future_positions:
+                future_required = config.POSITION_REQUIREMENTS[future_pos]['min']
+                # Get cheapest players for that position
+                future_df = df[df['position'] == future_pos].nsmallest(future_required, 'price')
+                min_budget_to_reserve += future_df['price'].sum()
+            
+            # Also reserve for bench (cheapest 8 players)
+            if position == 'RUC':  # Last position, so add bench reserve
+                bench_needed = config.POSITION_REQUIREMENTS['BENCH']['min']
+                selected_ids = [p['player_id'] for p in selected_players]
+                remaining_for_bench = df[~df['player_id'].isin(selected_ids)].nsmallest(bench_needed, 'price')
+                min_budget_to_reserve += remaining_for_bench['price'].sum()
+            
+            # Available budget for this position
+            available_for_position = remaining_budget - min_budget_to_reserve
+            max_price_per_player = available_for_position / required if required > 0 else 0
+            max_price_per_player = max(max_price_per_player, 150000)  # At least 150k
             
             count = 0
-            spent = 0
-            
             for _, player in pos_df.iterrows():
-                if count < required and spent + player['price'] <= budget_for_position:
-                    selected_players.append(player.to_dict())
-                    spent += player['price']
-                    position_counts[position] += 1
-                    count += 1
+                if count < required:
+                    # Can we afford this player?
+                    if player['price'] <= remaining_budget and player['price'] <= max_price_per_player:
+                        selected_players.append(player.to_dict())
+                        remaining_budget -= player['price']
+                        position_counts[position] += 1
+                        count += 1
                 if count >= required:
                     break
             
-            # If couldn't fill, get cheapest to meet requirement
+            # Fallback: if we couldn't fill the position, get cheaper players
             if count < required:
-                cheaper_df = pos_df.sort_values('price')
-                for _, player in cheaper_df.iterrows():
-                    if player['player_id'] not in [p['player_id'] for p in selected_players]:
-                        if count < required and spent + player['price'] <= budget_for_position:
+                cheaper_players = pos_df[pos_df['price'] <= remaining_budget].sort_values('price')
+                for _, player in cheaper_players.iterrows():
+                    player_id = player['player_id']
+                    if player_id not in [p['player_id'] for p in selected_players]:
+                        if count < required and player['price'] <= remaining_budget:
                             selected_players.append(player.to_dict())
-                            spent += player['price']
+                            remaining_budget -= player['price']
                             position_counts[position] += 1
                             count += 1
                         if count >= required:
                             break
         
-        # Phase 2: Fill bench
-        bench_budget = position_budgets['BENCH']
+        # Phase 2: Fill any missing position requirements with cheapest available
+        # Check if all required positions are filled
+        for position in ['DEF', 'MID', 'RUC', 'FWD']:
+            required = config.POSITION_REQUIREMENTS[position]['min']
+            current_count = position_counts[position]
+            
+            if current_count < required:
+                print(f"\nFilling remaining {position} positions ({current_count}/{required})...")
+                pos_df = df[df['position'] == position].copy()
+                selected_ids = [p['player_id'] for p in selected_players]
+                available = pos_df[~pos_df['player_id'].isin(selected_ids)].sort_values('price')
+                
+                for _, player in available.iterrows():
+                    if current_count < required and player['price'] <= remaining_budget:
+                        selected_players.append(player.to_dict())
+                        remaining_budget -= player['price']
+                        position_counts[position] += 1
+                        current_count += 1
+                        print(f"  ✓ Added {player['name']} for ${player['price']:,}")
+                    if current_count >= required:
+                        break
+        
+        # Phase 3: Fill bench with best available value players
+        bench_needed = config.POSITION_REQUIREMENTS['BENCH']['min']
+        
+        print(f"\nFilling bench ({bench_needed} players needed, ${remaining_budget:,} remaining)...")
+        
+        # Get remaining players not already selected
         selected_ids = [p['player_id'] for p in selected_players]
-        remaining_df = df[~df['player_id'].isin(selected_ids)].sort_values('adjusted_value', ascending=False)
+        remaining_df = df[~df['player_id'].isin(selected_ids)].copy()
+        
+        # Sort by value (want good bench players for low price)
+        remaining_df = remaining_df.sort_values('adjusted_value', ascending=False)
         
         bench_count = 0
-        bench_spent = 0
         for _, player in remaining_df.iterrows():
-            if bench_count < bench_needed and bench_spent + player['price'] <= bench_budget:
-                selected_players.append(player.to_dict())
-                bench_spent += player['price']
-                position_counts['BENCH'] += 1
-                bench_count += 1
+            if bench_count < bench_needed:
+                if player['price'] <= remaining_budget:
+                    selected_players.append(player.to_dict())
+                    remaining_budget -= player['price']
+                    position_counts['BENCH'] += 1
+                    bench_count += 1
         
-        # If still short on bench, get cheapest
+        # Final fallback: if still missing bench players, get absolute cheapest
         if bench_count < bench_needed:
             remaining_ids = [p['player_id'] for p in selected_players]
-            cheapest_df = df[~df['player_id'].isin(remaining_ids)].sort_values('price')
-            for _, player in cheapest_df.iterrows():
-                if bench_count < bench_needed and bench_spent + player['price'] <= bench_budget:
+            remaining_df = df[~df['player_id'].isin(remaining_ids)].sort_values('price')
+            
+            for _, player in remaining_df.iterrows():
+                if bench_count < bench_needed and player['price'] <= remaining_budget:
                     selected_players.append(player.to_dict())
-                    bench_spent += player['price']
+                    remaining_budget -= player['price']
                     position_counts['BENCH'] += 1
                     bench_count += 1
                 if bench_count >= bench_needed:
@@ -124,7 +192,7 @@ class TeamOptimizer:
         # Create team DataFrame
         self.selected_team = pd.DataFrame(selected_players)
         
-        # Calculate statistics
+        # Calculate team statistics
         total_cost = self.selected_team['price'].sum()
         total_predicted_score = self.selected_team['predicted_score'].sum()
         avg_value = self.selected_team['adjusted_value'].mean()
@@ -133,6 +201,7 @@ class TeamOptimizer:
         print(f"Total Players: {len(self.selected_team)}/{config.TEAM_SIZE}")
         print(f"Total Cost: ${total_cost:,} / ${config.SALARY_CAP:,}")
         print(f"Budget Status: {'✓ WITHIN BUDGET' if total_cost <= config.SALARY_CAP else '✗ OVER BUDGET'}")
+        print(f"Remaining Budget: ${config.SALARY_CAP - total_cost:,}")
         print(f"Total Predicted Score: {total_predicted_score:.2f}")
         print(f"Average Value Score: {avg_value:.2f}")
         print(f"\nPosition Breakdown:")

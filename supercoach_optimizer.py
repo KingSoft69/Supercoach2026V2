@@ -22,7 +22,14 @@ def main():
     print("STEP 1: Collecting Player Data")
     print("-" * 40)
     collector = AFLDataCollector()
-    players_df = collector.load_sample_data()
+    
+    # Try to load real data from FootyWire first
+    try:
+        players_df = collector.load_real_data()
+    except:
+        print("Could not load real data, using sample data")
+        players_df = collector.load_sample_data()
+    
     print(f"Loaded {len(players_df)} players")
     print(f"Positions: {players_df['position'].value_counts().to_dict()}")
     

@@ -33,12 +33,32 @@ class PlayerPerformancePredictor:
         df['price_per_point'] = df['price'] / (df['avg_score'] + 1)
         df['form_ratio'] = df['form_last_5'] / (df['avg_score'] + 1)
         
+        # Age-based features
+        df['age_squared'] = df['age'] ** 2  # Capture non-linear age effects
+        df['years_to_peak'] = np.abs(df['age'] - 26)  # Distance from peak age
+        
+        # Draft pick features (lower draft pick = better)
+        df['is_top_10_pick'] = (df['draft_pick'] <= 10).astype(int)
+        df['is_first_round_pick'] = (df['draft_pick'] <= 20).astype(int)
+        
+        # Injury impact
+        df['injury_risk'] = df['injury_history'] + df['injured_last_year'] * 2
+        df['availability_score'] = df['games_last_3'] / 3.0  # 0-1 scale
+        
+        # Potential adjusted performance
+        df['potential_adjusted_score'] = df['avg_score'] * df['potential']
+        
         # Select features
         feature_cols = [
-            'age', 'games_played', 'avg_disposals', 'avg_kicks', 'avg_handballs',
+            'age', 'age_squared', 'years_to_peak', 'potential',
+            'games_played', 'avg_disposals', 'avg_kicks', 'avg_handballs',
             'avg_marks', 'avg_tackles', 'avg_goals', 'avg_behinds', 'avg_hitouts',
-            'team_encoded', 'position_encoded', 'injury_history', 'games_last_3',
-            'form_last_5', 'price_per_point', 'form_ratio'
+            'team_encoded', 'position_encoded', 
+            'draft_pick', 'draft_value', 'is_top_10_pick', 'is_first_round_pick',
+            'injured_last_year', 'injury_history', 'injury_risk',
+            'games_last_3', 'availability_score',
+            'form_last_5', 'price_per_point', 'form_ratio',
+            'potential_adjusted_score'
         ]
         
         X = df[feature_cols]
@@ -111,8 +131,15 @@ class PlayerPerformancePredictor:
         df['risk_factor'] = 1 - (df['injury_history'] * 0.1)
         df['risk_factor'] = df['risk_factor'].clip(0.5, 1.0)
         
-        # Adjusted value score
-        df['adjusted_value'] = df['value_score'] * df['risk_factor']
+        # Additional penalty for injured last year
+        df.loc[df['injured_last_year'] == 1, 'risk_factor'] *= 0.9
+        
+        # Potential bonus for young players (upside)
+        df['upside_factor'] = 1.0
+        df.loc[df['age'] < 23, 'upside_factor'] = df['potential']
+        
+        # Adjusted value score with risk and upside
+        df['adjusted_value'] = df['value_score'] * df['risk_factor'] * df['upside_factor']
         
         return df
     

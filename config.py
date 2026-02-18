@@ -44,6 +44,7 @@ MODEL_CONFIG = {
 # Features for ML model
 PLAYER_FEATURES = [
     'age',
+    'potential',
     'games_played',
     'avg_disposals',
     'avg_kicks',
@@ -57,6 +58,9 @@ PLAYER_FEATURES = [
     'price',
     'position_encoded',
     'team_encoded',
+    'draft_pick',
+    'draft_value',
+    'injured_last_year',
     'injury_history',
     'games_last_3',
     'form_last_5'

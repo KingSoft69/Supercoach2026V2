@@ -61,25 +61,28 @@ Edit `config.py` to customize:
 ## How It Works
 
 ### 1. Data Collection
-The system collects AFL player statistics including:
-- Disposals, kicks, handballs
-- Marks, tackles, goals
-- Hitouts (for ruckmen)
-- Historical performance
-- Current form and injury history
+The system collects AFL player statistics from FootyWire, including:
+- **Basic Stats**: Disposals, kicks, handballs, marks, tackles, goals, hitouts
+- **Performance**: Historical averages and current form
+- **Demographics**: Age, team, position
+- **Draft Information**: Draft pick number (earlier picks indicate higher talent)
+- **Injury History**: Whether player was injured last year and career injury count
+- **Availability**: Recent games played
 
 ### 2. Machine Learning Model
-Uses Gradient Boosting Regression to predict:
-- Expected average score per game
-- Player value (points per $)
-- Risk-adjusted performance
+Uses Gradient Boosting Regression to predict player performance considering:
+- **Age & Potential**: Young players (18-23) have growth potential, peak age is 24-28
+- **Draft Pedigree**: Top 10 picks and first-round picks weighted higher
+- **Injury Risk**: Players injured last year are downweighted
+- **Historical Performance**: Career averages and recent form
+- **Position-specific Patterns**: Different scoring patterns for DEF/MID/RUC/FWD
 
-Features used:
-- Age and experience
-- Historical averages
-- Recent form (last 3-5 games)
-- Position and team
-- Injury history
+Advanced features:
+- Age-squared and years-to-peak (non-linear age effects)
+- Potential-adjusted scores (upside for young players)
+- Injury risk scores (combining history and recent injuries)
+- Draft value indicators (top 10, first round flags)
+- Availability scores (games played recently)
 
 ### 3. Team Optimization
 Applies constraint-based optimization to select 30 players:
@@ -89,16 +92,24 @@ Applies constraint-based optimization to select 30 players:
 - 6 Forwards
 - 8 Bench players
 
-Optimizes for maximum predicted weekly score while staying under salary cap.
+Optimizes for:
+- **Maximum predicted weekly score** while staying under salary cap
+- **Value**: Points per dollar spent
+- **Balance**: Position coverage and team diversity
+- **Risk**: Downweights injury-prone players
+- **Upside**: Bonus for young players with high potential
 
 ## Team Strategy
 
 The optimizer considers multiple factors:
-- **Performance**: Predicted fantasy points
-- **Value**: Points per dollar spent
-- **Balance**: Position coverage and team diversity
-- **Risk**: Injury history and recent games played
-- **Form**: Recent performance trends
+- **Performance**: Predicted fantasy points based on historical data
+- **Value**: Points per dollar spent (optimal budget allocation)
+- **Balance**: Position coverage and AFL team diversity
+- **Age & Potential**: Young players (18-23) with high upside get bonus weighting
+- **Draft Pedigree**: Top draft picks historically perform better
+- **Risk**: Injury history and recent injuries are heavily penalized
+- **Availability**: Recent games played indicates current fitness
+- **Form**: Recent performance trends weighted more than career averages
 
 ## Requirements
 
