@@ -14,10 +14,13 @@ class TeamOptimizer:
         
     def optimize_team(self, players_df, strategy='balanced'):
         """
-        Optimize team selection - fills all 30 positions within budget
+        Optimize team selection - follows Supercoach 2026 rules:
+        - 22 onfield players (6 DEF, 8 MID, 2 RUC, 6 FWD)
+        - 8 bench players (any position, for coverage)
+        - Total 30 players within salary cap
         """
         print("\n" + "="*60)
-        print("OPTIMIZING TEAM SELECTION")
+        print("OPTIMIZING TEAM SELECTION - SUPERCOACH 2026 RULES")
         print("="*60)
         
         df = players_df.copy()
@@ -29,31 +32,45 @@ class TeamOptimizer:
         remaining_budget = config.SALARY_CAP
         position_counts = {pos: 0 for pos in config.POSITION_REQUIREMENTS.keys()}
         
-        # Phase 1: Fill each required position with best value within budget
+        # Phase 1: Fill onfield positions with best value within budget
+        print("\nPhase 1: Selecting starting 22 players...")
         for pos in ['DEF', 'MID', 'RUC', 'FWD']:
-            required = config.POSITION_REQUIREMENTS[pos]['min']
+            onfield_needed = config.POSITION_REQUIREMENTS[pos]['on_field']
             # Get players for this position sorted by value
             pos_players = df[df['position'] == pos].sort_values('adjusted_value', ascending=False)
             
+            print(f"  Selecting {onfield_needed} {pos} players for starting lineup...")
             for _, player in pos_players.iterrows():
-                if position_counts[pos] < required and player['price'] <= remaining_budget:
-                    selected.append(player.to_dict())
+                if position_counts[pos] < onfield_needed and player['price'] <= remaining_budget:
+                    player_dict = player.to_dict()
+                    player_dict['onfield'] = True  # Mark as onfield player
+                    selected.append(player_dict)
                     remaining_budget -= player['price']
                     position_counts[pos] += 1
-                if position_counts[pos] >= required:
+                if position_counts[pos] >= onfield_needed:
                     break
         
-        # Phase 2: Fill bench with best remaining value
-        bench_needed = config.POSITION_REQUIREMENTS['BENCH']['min']
+        # Phase 2: Fill bench (8 players) with best remaining value
+        # Bench can be any position mix, typically for coverage
+        print(f"\nPhase 2: Selecting {config.BENCH_SIZE} bench players...")
+        bench_needed = config.BENCH_SIZE
         selected_ids = [s['player_id'] for s in selected]
         remaining_players = df[~df['player_id'].isin(selected_ids)].sort_values('adjusted_value', ascending=False)
         
+        bench_count = 0
         for _, player in remaining_players.iterrows():
-            if position_counts['BENCH'] < bench_needed and player['price'] <= remaining_budget:
-                selected.append(player.to_dict())
+            pos = player['position']
+            # Check if we can add more of this position (haven't hit max yet)
+            if (bench_count < bench_needed and 
+                player['price'] <= remaining_budget and
+                position_counts[pos] < config.POSITION_REQUIREMENTS[pos]['max']):
+                player_dict = player.to_dict()
+                player_dict['onfield'] = False  # Mark as bench player
+                selected.append(player_dict)
                 remaining_budget -= player['price']
-                position_counts['BENCH'] += 1
-            if position_counts['BENCH'] >= bench_needed:
+                position_counts[pos] += 1
+                bench_count += 1
+            if bench_count >= bench_needed:
                 break
         
         # Create team DataFrame
@@ -61,58 +78,54 @@ class TeamOptimizer:
         
         # Calculate statistics
         total_cost = self.selected_team['price'].sum()
-        total_predicted_score = self.selected_team['predicted_score'].sum()
+        onfield_score = self.selected_team[self.selected_team['onfield'] == True]['predicted_score'].sum()
         avg_value = self.selected_team['adjusted_value'].mean()
         
         print(f"\nTeam Selection Complete!")
         print(f"Total Players: {len(self.selected_team)}/{config.TEAM_SIZE}")
         print(f"Total Cost: ${total_cost:,} / ${config.SALARY_CAP:,}")
         print(f"Budget Status: {'✓ WITHIN BUDGET' if total_cost <= config.SALARY_CAP else '✗ OVER BUDGET'}")
-        print(f"Total Predicted Score: {total_predicted_score:.2f}")
+        print(f"Onfield (Starting 22) Predicted Score: {onfield_score:.2f}")
         print(f"Average Value Score: {avg_value:.2f}")
         print(f"\nPosition Breakdown:")
-        for pos in ['DEF', 'MID', 'RUC', 'FWD', 'BENCH']:
+        for pos in ['DEF', 'MID', 'RUC', 'FWD']:
             count = position_counts[pos]
             req = config.POSITION_REQUIREMENTS[pos]
+            onfield = config.POSITION_REQUIREMENTS[pos]['on_field']
+            bench = count - onfield
             status = "✓" if count >= req['min'] and count <= req['max'] else "✗"
-            print(f"  {status} {pos}: {count} (required: {req['min']}-{req['max']})")
+            print(f"  {status} {pos}: {count} total ({onfield} onfield + {bench} bench)")
         
         return self.selected_team
     
     def get_starting_lineup(self):
-        """Get the starting 22 players"""
+        """Get the starting 22 onfield players"""
         if self.selected_team is None:
             raise ValueError("No team selected.")
         
-        starting_lineup = []
-        for position in ['DEF', 'MID', 'RUC', 'FWD']:
-            pos_players = self.selected_team[self.selected_team['position'] == position]
-            on_field = config.POSITION_REQUIREMENTS[position]['on_field']
-            top_players = pos_players.nlargest(on_field, 'predicted_score')
-            starting_lineup.append(top_players)
-        
-        return pd.concat(starting_lineup)
+        # Return players marked as onfield
+        return self.selected_team[self.selected_team['onfield'] == True].copy()
     
     def get_bench_players(self):
-        """Get bench players"""
+        """Get the 8 bench players"""
         if self.selected_team is None:
             raise ValueError("No team selected.")
-        starting = self.get_starting_lineup()
-        bench = self.selected_team[~self.selected_team['player_id'].isin(starting['player_id'])]
-        return bench
+        
+        # Return players marked as bench
+        return self.selected_team[self.selected_team['onfield'] == False].copy()
     
     def display_team(self):
-        """Display formatted team selection"""
+        """Display formatted team selection following Supercoach 2026 rules"""
         if self.selected_team is None:
             raise ValueError("No team selected.")
         
         print("\n" + "="*80)
-        print("2026 AFL SUPERCOACH OPTIMAL TEAM")
+        print("2026 AFL SUPERCOACH OPTIMAL TEAM - SUPERCOACH RULES")
         print("="*80)
         
         starting = self.get_starting_lineup()
         
-        print("\n--- STARTING LINEUP ---")
+        print("\n--- STARTING LINEUP (22 ONFIELD PLAYERS) ---")
         for position in ['DEF', 'MID', 'RUC', 'FWD']:
             print(f"\n{position}:")
             pos_players = starting[starting['position'] == position]
@@ -121,11 +134,17 @@ class TeamOptimizer:
                       f"${player['price']:7,} - Score: {player['predicted_score']:6.2f} - "
                       f"Value: {player['adjusted_value']:5.2f}")
         
-        print("\n--- BENCH ---")
+        print("\n--- BENCH (8 EMERGENCY PLAYERS) ---")
         bench = self.get_bench_players()
-        for _, player in bench.iterrows():
-            print(f"  {player['name']:25s} ({player['team']:15s}) - "
-                  f"${player['price']:7,} - Score: {player['predicted_score']:6.2f}")
+        # Group bench by position for better display
+        for position in ['DEF', 'MID', 'RUC', 'FWD']:
+            pos_bench = bench[bench['position'] == position]
+            if len(pos_bench) > 0:
+                print(f"\n{position} Bench:")
+                for _, player in pos_bench.iterrows():
+                    print(f"  {player['name']:25s} ({player['team']:15s}) - "
+                          f"${player['price']:7,} - Score: {player['predicted_score']:6.2f} - "
+                          f"Value: {player['adjusted_value']:5.2f}")
         
         total_cost = self.selected_team['price'].sum()
         total_score = starting['predicted_score'].sum()
@@ -133,8 +152,9 @@ class TeamOptimizer:
         print("\n" + "="*80)
         print(f"Total Squad Cost: ${total_cost:,} / ${config.SALARY_CAP:,}")
         print(f"Money Remaining: ${config.SALARY_CAP - total_cost:,}")
-        print(f"Expected Weekly Score: {total_score:.2f}")
+        print(f"Expected Weekly Score (Starting 22): {total_score:.2f}")
         print(f"Average Value: {self.selected_team['adjusted_value'].mean():.2f}")
+        print(f"Team Composition: {len(starting)} onfield + {len(bench)} bench = {config.TEAM_SIZE} total")
         print("="*80)
     
     def save_team(self, filepath='optimal_team.csv'):
@@ -145,30 +165,32 @@ class TeamOptimizer:
         print(f"\nTeam saved to {filepath}")
     
     def save_team_excel(self, filepath='optimal_team_2026.xlsx'):
-        """Save team to Excel with formatting"""
+        """Save team to Excel with formatting following Supercoach 2026 rules"""
         if self.selected_team is None:
             raise ValueError("No team selected.")
         
         # Create Excel writer
         with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
-            # Starting lineup
+            # Starting lineup (22 onfield players)
             starting = self.get_starting_lineup()
             starting_sorted = starting.sort_values(['position', 'predicted_score'], ascending=[True, False])
-            starting_sorted.to_excel(writer, sheet_name='Starting Lineup', index=False)
+            starting_sorted.to_excel(writer, sheet_name='Starting 22 (Onfield)', index=False)
             
-            # Bench
+            # Bench (8 players)
             bench = self.get_bench_players()
-            bench_sorted = bench.sort_values('predicted_score', ascending=False)
-            bench_sorted.to_excel(writer, sheet_name='Bench', index=False)
+            bench_sorted = bench.sort_values(['position', 'predicted_score'], ascending=[True, False])
+            bench_sorted.to_excel(writer, sheet_name='Bench (8 Emergency)', index=False)
             
             # Full team
-            full_team_sorted = self.selected_team.sort_values(['position', 'predicted_score'], ascending=[True, False])
+            full_team_sorted = self.selected_team.sort_values(['onfield', 'position', 'predicted_score'], ascending=[False, True, False])
             full_team_sorted.to_excel(writer, sheet_name='Full Team', index=False)
             
             # Summary statistics
             summary_data = {
                 'Metric': [
                     'Total Players',
+                    'Onfield Players',
+                    'Bench Players',
                     'Total Cost',
                     'Salary Cap',
                     'Remaining Budget',
@@ -179,6 +201,8 @@ class TeamOptimizer:
                 ],
                 'Value': [
                     len(self.selected_team),
+                    len(starting),
+                    len(bench),
                     f"${self.selected_team['price'].sum():,}",
                     f"${config.SALARY_CAP:,}",
                     f"${config.SALARY_CAP - self.selected_team['price'].sum():,}",

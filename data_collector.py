@@ -192,8 +192,8 @@ class AFLDataCollector:
                         draft_pick = None
                         injured_last_year = False
                         
-                        if fetch_player_details and player_url and idx < 50:  # Limit to first 50 for speed
-                            print(f"  Fetching details for {name}...")
+                        if fetch_player_details and player_url:  # Fetch all player details
+                            print(f"  Fetching details for {name} ({idx+1}/{len(rows)})...")
                             details = self.get_player_details(player_url)
                             age = details.get('age')
                             draft_pick = details.get('draft_pick')
@@ -287,105 +287,6 @@ class AFLDataCollector:
         elif 'RUC' in position or 'RUCK' in position or position == 'R':
             return 'RUC'
         elif 'FWD' in position or 'FORWARD' in position or position == 'F':
-            return 'FWD'
-        else:
-            # Default to MID for utility players
-            return 'MID'
-    
-    def load_real_data(self):
-        """
-        Load real AFL Supercoach player data from FootyWire
-        """
-        try:
-            print("Fetching real player data from FootyWire...")
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            
-            response = requests.get(self.real_data_url, headers=headers, timeout=30)
-            response.raise_for_status()
-            
-            # Parse HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Find the table with player data
-            table = soup.find('table', {'class': 'data'})
-            
-            if not table:
-                print("Could not find player data table. Using sample data instead.")
-                return self.load_sample_data()
-            
-            # Extract table data
-            players = []
-            rows = table.find_all('tr')[1:]  # Skip header
-            
-            for row in rows:
-                cols = row.find_all('td')
-                if len(cols) >= 7:
-                    try:
-                        # Extract player information
-                        player_link = cols[0].find('a')
-                        name = player_link.text.strip() if player_link else cols[0].text.strip()
-                        
-                        team = cols[1].text.strip()
-                        position = cols[2].text.strip()
-                        
-                        # Parse price (remove $ and commas)
-                        price_text = cols[3].text.strip().replace('$', '').replace(',', '')
-                        price = int(price_text) if price_text.isdigit() else 0
-                        
-                        # Get average score if available
-                        avg_score_text = cols[4].text.strip()
-                        avg_score = float(avg_score_text) if avg_score_text and avg_score_text != '-' else 0.0
-                        
-                        # Create player entry
-                        if price > 0:  # Only include players with valid prices
-                            player = {
-                                'player_id': f'FW{len(players):04d}',
-                                'name': name,
-                                'team': team,
-                                'position': self._normalize_position(position),
-                                'age': int(np.random.normal(25, 4)),  # Estimated
-                                'games_played': int(np.random.exponential(50)),  # Estimated
-                                'avg_score': avg_score if avg_score > 0 else np.random.normal(70, 20),
-                                'price': price,
-                                'injury_history': int(np.random.exponential(1)),
-                                'games_last_3': min(3, int(np.random.uniform(0, 4))),
-                                'form_last_5': avg_score * np.random.uniform(0.9, 1.1) if avg_score > 0 else np.random.normal(70, 20)
-                            }
-                            
-                            # Add estimated stats based on position and score
-                            player.update(self._estimate_stats(player))
-                            
-                            players.append(player)
-                    except (ValueError, AttributeError, IndexError) as e:
-                        continue  # Skip rows with parsing errors
-            
-            if players:
-                self.players_data = pd.DataFrame(players)
-                print(f"Loaded {len(players)} real players from FootyWire")
-                return self.players_data
-            else:
-                print("No valid player data found. Using sample data instead.")
-                return self.load_sample_data()
-                
-        except Exception as e:
-            print(f"Error fetching real data: {e}")
-            print("Falling back to sample data...")
-            return self.load_sample_data()
-    
-    def _normalize_position(self, position):
-        """Normalize position names to standard format"""
-        position = position.upper().strip()
-        
-        # Map common position variations
-        if 'DEF' in position or 'BACK' in position:
-            return 'DEF'
-        elif 'MID' in position or 'MIDFIELDER' in position:
-            return 'MID'
-        elif 'RUC' in position or 'RUCK' in position:
-            return 'RUC'
-        elif 'FWD' in position or 'FORWARD' in position:
             return 'FWD'
         else:
             # Default to MID for utility players

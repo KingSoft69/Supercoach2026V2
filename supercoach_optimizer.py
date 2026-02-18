@@ -23,9 +23,10 @@ def main():
     print("-" * 40)
     collector = AFLDataCollector()
     
-    # Try to load real data from FootyWire first
+    # Try to load real data from FootyWire first with detailed player information
     try:
-        players_df = collector.load_real_data()
+        # Enable fetching detailed player info from FootyWire links
+        players_df = collector.load_real_data(fetch_player_details=True)
     except:
         print("Could not load real data, using sample data")
         players_df = collector.load_sample_data()
