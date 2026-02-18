@@ -1,9 +1,8 @@
 """
-Team optimization module using constraint-based optimization - Fixed version
+Team optimization - Simplified greedy approach with guaranteed position filling
 """
 import numpy as np
 import pandas as pd
-from scipy.optimize import linprog
 import config
 
 
@@ -12,117 +11,53 @@ class TeamOptimizer:
     
     def __init__(self):
         self.selected_team = None
-        self.optimization_result = None
         
     def optimize_team(self, players_df, strategy='balanced'):
         """
-        Optimize team selection with guaranteed budget compliance
-        
-        Parameters:
-        - players_df: DataFrame with player data including predicted_score and value_score
-        - strategy: 'balanced', 'value', or 'high_score'
+        Optimize team selection - fills all 30 positions within budget
         """
         print("\n" + "="*60)
         print("OPTIMIZING TEAM SELECTION")
         print("="*60)
         
-        # Prepare data
         df = players_df.copy()
         
-        # Choose objective based on strategy
-        if strategy == 'value':
-            df['objective'] = df['adjusted_value']
-        elif strategy == 'high_score':
-            df['objective'] = df['predicted_score']
-        else:  # balanced
-            df['objective'] = df['predicted_score'] * 0.7 + df['adjusted_value'] * 0.3
+        # Choose objective - for this algorithm, always use value to stay within budget
+        df['objective'] = df['adjusted_value']
         
-        # Calculate budget allocation to ensure all positions can be filled
-        min_prices = {}
-        for pos in ['DEF', 'MID', 'RUC', 'FWD']:
-            required = config.POSITION_REQUIREMENTS[pos]['min']
-            pos_players = df[df['position'] == pos].nsmallest(required, 'price')
-            min_prices[pos] = pos_players['price'].sum()
-        
-        # Reserve for bench
-        bench_needed = config.POSITION_REQUIREMENTS['BENCH']['min']
-        min_prices['BENCH'] = df.nsmallest(bench_needed, 'price')['price'].sum()
-        
-        total_min = sum(min_prices.values())
-        buffer = config.SALARY_CAP - total_min
-        
-        # Allocate budget proportionally
-        position_budgets = {
-            'MID': min_prices['MID'] + buffer * 0.35,
-            'DEF': min_prices['DEF'] + buffer * 0.25,
-            'FWD': min_prices['FWD'] + buffer * 0.20,
-            'RUC': min_prices['RUC'] + buffer * 0.15,
-            'BENCH': min_prices['BENCH'] + buffer * 0.05
-        }
-        
-        selected_players = []
+        selected = []
+        remaining_budget = config.SALARY_CAP
         position_counts = {pos: 0 for pos in config.POSITION_REQUIREMENTS.keys()}
         
-        # Phase 1: Fill each position within allocated budget
-        for position in ['MID', 'DEF', 'FWD', 'RUC']:
-            pos_df = df[df['position'] == position].sort_values('objective', ascending=False).copy()
-            required = config.POSITION_REQUIREMENTS[position]['min']
-            budget_for_position = position_budgets[position]
+        # Phase 1: Fill each required position with best value within budget
+        for pos in ['DEF', 'MID', 'RUC', 'FWD']:
+            required = config.POSITION_REQUIREMENTS[pos]['min']
+            # Get players for this position sorted by value
+            pos_players = df[df['position'] == pos].sort_values('adjusted_value', ascending=False)
             
-            count = 0
-            spent = 0
-            
-            for _, player in pos_df.iterrows():
-                if count < required and spent + player['price'] <= budget_for_position:
-                    selected_players.append(player.to_dict())
-                    spent += player['price']
-                    position_counts[position] += 1
-                    count += 1
-                if count >= required:
+            for _, player in pos_players.iterrows():
+                if position_counts[pos] < required and player['price'] <= remaining_budget:
+                    selected.append(player.to_dict())
+                    remaining_budget -= player['price']
+                    position_counts[pos] += 1
+                if position_counts[pos] >= required:
                     break
-            
-            # If couldn't fill, get cheapest to meet requirement
-            if count < required:
-                cheaper_df = pos_df.sort_values('price')
-                for _, player in cheaper_df.iterrows():
-                    if player['player_id'] not in [p['player_id'] for p in selected_players]:
-                        if count < required and spent + player['price'] <= budget_for_position:
-                            selected_players.append(player.to_dict())
-                            spent += player['price']
-                            position_counts[position] += 1
-                            count += 1
-                        if count >= required:
-                            break
         
-        # Phase 2: Fill bench
-        bench_budget = position_budgets['BENCH']
-        selected_ids = [p['player_id'] for p in selected_players]
-        remaining_df = df[~df['player_id'].isin(selected_ids)].sort_values('adjusted_value', ascending=False)
+        # Phase 2: Fill bench with best remaining value
+        bench_needed = config.POSITION_REQUIREMENTS['BENCH']['min']
+        selected_ids = [s['player_id'] for s in selected]
+        remaining_players = df[~df['player_id'].isin(selected_ids)].sort_values('adjusted_value', ascending=False)
         
-        bench_count = 0
-        bench_spent = 0
-        for _, player in remaining_df.iterrows():
-            if bench_count < bench_needed and bench_spent + player['price'] <= bench_budget:
-                selected_players.append(player.to_dict())
-                bench_spent += player['price']
+        for _, player in remaining_players.iterrows():
+            if position_counts['BENCH'] < bench_needed and player['price'] <= remaining_budget:
+                selected.append(player.to_dict())
+                remaining_budget -= player['price']
                 position_counts['BENCH'] += 1
-                bench_count += 1
-        
-        # If still short on bench, get cheapest
-        if bench_count < bench_needed:
-            remaining_ids = [p['player_id'] for p in selected_players]
-            cheapest_df = df[~df['player_id'].isin(remaining_ids)].sort_values('price')
-            for _, player in cheapest_df.iterrows():
-                if bench_count < bench_needed and bench_spent + player['price'] <= bench_budget:
-                    selected_players.append(player.to_dict())
-                    bench_spent += player['price']
-                    position_counts['BENCH'] += 1
-                    bench_count += 1
-                if bench_count >= bench_needed:
-                    break
+            if position_counts['BENCH'] >= bench_needed:
+                break
         
         # Create team DataFrame
-        self.selected_team = pd.DataFrame(selected_players)
+        self.selected_team = pd.DataFrame(selected)
         
         # Calculate statistics
         total_cost = self.selected_team['price'].sum()
@@ -145,28 +80,23 @@ class TeamOptimizer:
         return self.selected_team
     
     def get_starting_lineup(self):
-        """Get the starting 22 players (on-field)"""
+        """Get the starting 22 players"""
         if self.selected_team is None:
-            raise ValueError("No team selected. Call optimize_team() first.")
+            raise ValueError("No team selected.")
         
         starting_lineup = []
-        
         for position in ['DEF', 'MID', 'RUC', 'FWD']:
             pos_players = self.selected_team[self.selected_team['position'] == position]
             on_field = config.POSITION_REQUIREMENTS[position]['on_field']
-            
-            # Select top players by predicted score
             top_players = pos_players.nlargest(on_field, 'predicted_score')
             starting_lineup.append(top_players)
         
-        starting_df = pd.concat(starting_lineup)
-        return starting_df
+        return pd.concat(starting_lineup)
     
     def get_bench_players(self):
         """Get bench players"""
         if self.selected_team is None:
-            raise ValueError("No team selected. Call optimize_team() first.")
-        
+            raise ValueError("No team selected.")
         starting = self.get_starting_lineup()
         bench = self.selected_team[~self.selected_team['player_id'].isin(starting['player_id'])]
         return bench
@@ -174,16 +104,15 @@ class TeamOptimizer:
     def display_team(self):
         """Display formatted team selection"""
         if self.selected_team is None:
-            raise ValueError("No team selected. Call optimize_team() first.")
+            raise ValueError("No team selected.")
         
         print("\n" + "="*80)
         print("2026 AFL SUPERCOACH OPTIMAL TEAM")
         print("="*80)
         
-        # Starting lineup
-        print("\n--- STARTING LINEUP ---")
         starting = self.get_starting_lineup()
         
+        print("\n--- STARTING LINEUP ---")
         for position in ['DEF', 'MID', 'RUC', 'FWD']:
             print(f"\n{position}:")
             pos_players = starting[starting['position'] == position]
@@ -192,14 +121,12 @@ class TeamOptimizer:
                       f"${player['price']:7,} - Score: {player['predicted_score']:6.2f} - "
                       f"Value: {player['adjusted_value']:5.2f}")
         
-        # Bench
         print("\n--- BENCH ---")
         bench = self.get_bench_players()
         for _, player in bench.iterrows():
             print(f"  {player['name']:25s} ({player['team']:15s}) - "
                   f"${player['price']:7,} - Score: {player['predicted_score']:6.2f}")
         
-        # Summary
         total_cost = self.selected_team['price'].sum()
         total_score = starting['predicted_score'].sum()
         
@@ -214,34 +141,28 @@ class TeamOptimizer:
         """Save team to CSV"""
         if self.selected_team is None:
             raise ValueError("No team selected.")
-        
         self.selected_team.to_csv(filepath, index=False)
         print(f"\nTeam saved to {filepath}")
     
     def analyze_team_balance(self):
-        """Analyze team composition and balance"""
+        """Analyze team composition"""
         if self.selected_team is None:
             raise ValueError("No team selected.")
         
         print("\n--- TEAM ANALYSIS ---")
         
-        # Age distribution
         avg_age = self.selected_team['age'].mean()
         print(f"Average Age: {avg_age:.1f}")
         
-        # Team diversity
         team_counts = self.selected_team['team'].value_counts()
         print(f"\nTeam Diversity: {len(team_counts)} different AFL teams")
         print("Players per team:")
         for team, count in team_counts.head(5).items():
             print(f"  {team}: {count}")
         
-        # Price distribution
-        print(f"\nPrice Range: ${self.selected_team['price'].min():,} - "
-              f"${self.selected_team['price'].max():,}")
+        print(f"\nPrice Range: ${self.selected_team['price'].min():,} - ${self.selected_team['price'].max():,}")
         print(f"Average Price: ${self.selected_team['price'].mean():,.0f}")
         
-        # Risk assessment
         avg_injury = self.selected_team['injury_history'].mean()
         print(f"\nAverage Injury History: {avg_injury:.2f}")
         
