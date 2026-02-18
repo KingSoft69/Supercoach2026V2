@@ -63,20 +63,33 @@ class TeamOptimizer:
         
         # Phase 1: Fill onfield positions prioritizing high scorers
         print("\nPhase 1: Selecting starting 22 onfield players (highest scorers)...")
+        
+        # Calculate target budget per position
+        position_budgets = {}
         for pos in ['DEF', 'MID', 'RUC', 'FWD']:
             onfield_needed = config.POSITION_REQUIREMENTS[pos]['on_field']
-            pos_players = df[df['position'] == pos].copy()
-            
-            # Calculate budget for this position (more flexible for max_score strategy)
             if strategy == 'max_score':
-                # For max score, allow spending more on high performers
+                # Allocate budget proportionally
                 pos_budget_allocation = (onfield_needed / total_onfield) * config.SALARY_CAP * 0.85
             else:
                 pos_budget_allocation = (onfield_needed / total_onfield) * config.SALARY_CAP * 0.7
-                
+            position_budgets[pos] = pos_budget_allocation
+        
+        for pos_idx, pos in enumerate(['DEF', 'MID', 'RUC', 'FWD']):
+            onfield_needed = config.POSITION_REQUIREMENTS[pos]['on_field']
+            # Filter by position and maintain sort order by objective
+            pos_players = df[df['position'] == pos].sort_values('objective', ascending=False).copy()
+            
+            # Calculate budget constraints for this position
+            pos_budget_allocation = position_budgets[pos]
             target_price = pos_budget_allocation / onfield_needed
             
-            print(f"  Selecting {onfield_needed} {pos} (target ~${target_price:,.0f} each)...")
+            # Calculate how much budget we need to reserve for remaining positions
+            remaining_positions = ['DEF', 'MID', 'RUC', 'FWD'][pos_idx + 1:]
+            reserved_budget = sum(position_budgets[p] for p in remaining_positions)
+            max_spend_this_pos = remaining_budget - reserved_budget
+            
+            print(f"  Selecting {onfield_needed} {pos} (target ~${target_price:,.0f} each, max total: ${max_spend_this_pos:,.0f})...")
             
             # Pre-calculate position score threshold for max_score strategy
             if strategy == 'max_score':
@@ -84,8 +97,13 @@ class TeamOptimizer:
             
             # Select best players by objective
             selected_for_pos = 0
+            pos_spend = 0
             for _, player in pos_players.iterrows():
-                if selected_for_pos < onfield_needed and player['price'] <= remaining_budget:
+                # Check if we can afford this player while still having budget for later positions
+                can_afford = (player['price'] <= remaining_budget and 
+                             pos_spend + player['price'] <= max_spend_this_pos)
+                
+                if selected_for_pos < onfield_needed and can_afford:
                     # For max_score, be more aggressive with high scorers
                     if strategy == 'max_score':
                         accept = (player['predicted_score'] >= pos_score_threshold or
@@ -99,6 +117,7 @@ class TeamOptimizer:
                         player_dict['onfield'] = True
                         selected.append(player_dict)
                         remaining_budget -= player['price']
+                        pos_spend += player['price']
                         position_counts[pos] += 1
                         selected_for_pos += 1
                         
@@ -142,42 +161,7 @@ class TeamOptimizer:
         # Create team DataFrame
         self.selected_team = pd.DataFrame(selected)
         
-        # Calculate statistics
-        total_cost = self.selected_team['price'].sum()
-        onfield_players = self.selected_team[self.selected_team['onfield'] == True]
-        onfield_score = onfield_players['predicted_score'].sum() if len(onfield_players) > 0 else 0
-        avg_value = self.selected_team['adjusted_value'].mean()
-        
-        print(f"\nTeam Selection Complete!")
-        print(f"Total Players: {len(self.selected_team)}/{config.TEAM_SIZE}")
-        target_bench_price = remaining_budget / config.BENCH_SIZE if remaining_budget > 0 else 100000
-        print(f"  Target bench price: ~${target_bench_price:,.0f} each")
-        
-        bench_count = 0
-        for _, player in remaining_players.iterrows():
-            pos = player['position']
-            # Check if we can add more of this position and afford it
-            if (bench_count < config.BENCH_SIZE and 
-                player['price'] <= remaining_budget and
-                position_counts[pos] < config.POSITION_REQUIREMENTS[pos]['max']):
-                player_dict = player.to_dict()
-                player_dict['onfield'] = False
-                selected.append(player_dict)
-                remaining_budget -= player['price']
-                position_counts[pos] += 1
-                bench_count += 1
-                
-            if bench_count >= config.BENCH_SIZE:
-                break
-        
-        # If we didn't fill all positions, warn the user
-        if len(selected) < config.TEAM_SIZE:
-            print(f"\n⚠ WARNING: Could only select {len(selected)}/{config.TEAM_SIZE} players within budget")
-            print(f"  Remaining budget: ${remaining_budget:,}")
-            print(f"  Consider adjusting player valuations or increasing budget")
-        
-        # Create team DataFrame
-        self.selected_team = pd.DataFrame(selected)
+
         
         # Calculate statistics
         total_cost = self.selected_team['price'].sum()

@@ -23,10 +23,11 @@ def main():
     print("-" * 40)
     collector = AFLDataCollector()
     
-    # Load real data from FootyWire with detailed player information
-    print("Fetching player data from FootyWire with detailed player information...")
-    print("This may take a few minutes as we fetch details for each player...")
-    players_df = collector.load_real_data(fetch_player_details=True)
+    # Load real data from FootyWire 
+    # Note: We use fetch_player_details=False for faster execution
+    # Age and draft picks are estimated from available data (games played, performance)
+    print("Fetching player data from FootyWire...")
+    players_df = collector.load_real_data(fetch_player_details=False)
     
     if players_df is None or len(players_df) == 0:
         print("\n❌ ERROR: Could not load real data from FootyWire!")
