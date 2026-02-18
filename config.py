@@ -7,13 +7,22 @@ SALARY_CAP = 10000000  # $10 million salary cap
 TEAM_SIZE = 30  # Total players in team
 
 # Position requirements
+# Supercoach 2026 rules: 30 players total
+# - 22 on-field players (6 DEF, 8 MID, 2 RUC, 6 FWD)
+# - 8 bench players (any position mix, typically emergency coverage for each position)
+# Max values allow flexibility for bench composition
 POSITION_REQUIREMENTS = {
-    'DEF': {'min': 6, 'max': 6, 'on_field': 6},
-    'MID': {'min': 8, 'max': 8, 'on_field': 8},
-    'RUC': {'min': 2, 'max': 2, 'on_field': 2},
-    'FWD': {'min': 6, 'max': 6, 'on_field': 6},
-    'BENCH': {'min': 8, 'max': 8, 'on_field': 0}
+    'DEF': {'min': 6, 'max': 9, 'on_field': 6},   # 6 onfield, up to 3 bench
+    'MID': {'min': 8, 'max': 11, 'on_field': 8},  # 8 onfield, up to 3 bench
+    'RUC': {'min': 2, 'max': 4, 'on_field': 2},   # 2 onfield, up to 2 bench
+    'FWD': {'min': 6, 'max': 9, 'on_field': 6},   # 6 onfield, up to 3 bench
 }
+# Total: 22 onfield + flexible 8 bench (max total = 33 but constrained to 30 by TEAM_SIZE)
+
+# Total on-field: 22 players (6+8+2+6)
+# Total bench: 8 players (flexible positioning)
+STARTING_LINEUP_SIZE = 22
+BENCH_SIZE = 8
 
 # Scoring system weights
 SCORING_WEIGHTS = {
