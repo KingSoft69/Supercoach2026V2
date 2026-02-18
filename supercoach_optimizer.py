@@ -99,6 +99,9 @@ def main():
     # Save team
     optimizer.save_team('optimal_team_2026.csv')
     
+    # Save team to Excel
+    optimizer.save_team_excel('optimal_team_2026.xlsx')
+    
     # Save detailed analysis
     players_df.to_csv('all_players_analyzed.csv', index=False)
     
@@ -106,7 +109,8 @@ def main():
     print("OPTIMIZATION COMPLETE!")
     print("="*80)
     print("\nOutput files created:")
-    print("  - optimal_team_2026.csv: Your optimized team")
+    print("  - optimal_team_2026.xlsx: Your optimized team (Excel)")
+    print("  - optimal_team_2026.csv: Your optimized team (CSV)")
     print("  - all_players_analyzed.csv: All players with predictions")
     print("  - player_data_2026.csv: Raw player data")
     print("  - supercoach_model.pkl: Trained ML model")
